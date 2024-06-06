@@ -44,3 +44,6 @@ Can be found in the publication, will be linked to the dataset once published on
   - **Burguer** file (Excel file consisting on the raw data)
   - **Metadata** file (Excel file with explanations of all variables per datasheet)
   - Code file **Burger.R** includes the all analyses conducted in the manuscript
+
+*This dataset is published under the CC BY (Attribution) license.
+This license allows reusers to distribute, remix, adapt, and build upon the material in any medium or format, so long as attribution is given to the creator.*
