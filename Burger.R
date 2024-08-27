@@ -19,7 +19,7 @@ packages <- c("tidyverse","cluster", "factoextra","NbClust","tidyr",
               "reshape2","RColorBrewer","SensoMineR","FactoMineR","stats",
               "dplyr","writexl","gtools","ggbiplot","ggrepel",
               "ggstatsplot", "plotly", "car", "ez", "openxlsx","reticulate",
-              "rstatix")
+              "rstatix", "patchwork")
 inst(packages)
 theme_set(theme_minimal())
 
@@ -41,7 +41,7 @@ df <- df %>%
     time = as.factor(time),
     treatment = as.factor(treatment),
     rep = as.factor(rep),
-    Y = as.numeric(Y)
+    y = as.numeric(y)
   )
 summary(df)
 
@@ -51,11 +51,11 @@ summary(df)
 # -------------------------- #
 # M.O. subsets
 df_A <- df %>% filter(mo == "APC")
-df_T <- df %>% filter(mo == "Total_coliforms")
-df_E <- df %>% filter(mo == "E_coli")
-df_S <- df %>% filter(mo == "S_aureus")
+df_T <- df %>% filter(mo == "Total coliforms")
+df_E <- df %>% filter(mo == "E. coli")
+df_S <- df %>% filter(mo == "S. aureus")
 
-
+""" #not used for the second iteration
 # Negative control mean
 CN_A_mean <- mean(df_A$Y[df_A$treatment == "CN"], na.rm = TRUE)
 CN_T_mean <- mean(df_T$Y[df_T$treatment == "CN"], na.rm = TRUE)
@@ -79,7 +79,7 @@ df_E <- df_E %>%
 df_S <- df_S %>%
   slice(4:n()) %>% 
   mutate(Y =  Y - CN_S_mean)
-
+"""
 
 
 # -------------------------- #
@@ -92,10 +92,10 @@ df_S <- df_S %>%
 df_A_summary <- df_A %>%
   group_by(time, treatment) %>%
   summarise(
-    mean_Y = mean(Y),
-    sd_Y = sd(Y),
+    mean_y = mean(y),
+    sd_y = sd(y),
     n = n(),
-    se_Y = sd_Y / sqrt(n),
+    se_y = sd_y / sqrt(n),
     .groups = 'drop'
   )
 
@@ -103,26 +103,28 @@ df_A_summary <- df_A %>%
 #  ANOVA repeated meassures  #
 # -------------------------- #
 # First Plot
-ggplot(df_A, aes(x = time, y = Y, color = treatment)) +
+ggplot(df_A, aes(x = time, y = y, color = treatment)) +
   geom_boxplot() +
   labs(title = "Distribución de Y por tiempo y tratamiento", x = "Tiempo", y = "UFC/g")
 
 
 # Plotly Line graph time series
-(r_a <- plot_ly(df_A_summary, x = ~time, y = ~mean_Y, color = ~treatment, 
+(fig1.1 <- plot_ly(df_A_summary, x = ~time, y = ~mean_y, color = ~treatment, 
         type = 'scatter', mode = 'lines+markers', 
-        error_y = list(type = 'data', array = ~se_Y),
+        error_y = list(type = 'data', array = ~se_y),
         marker = list(size = 5)) %>%
   layout(title = "Time series APC",
          xaxis = list(title = "Time (days)"),
-         yaxis = list(title = "UFC/g"),
+         yaxis = list(title = ~paste("Log<sub>10</sub> CFU/g"), range = c(5, 9.2)),
          showlegend = TRUE))
+
+
 
 htmlwidgets::saveWidget(r_a, "r_a.html")
 
 
 # Q-Q plot by grups
-ggplot(df_A, aes(sample = Y)) +
+ggplot(df_A, aes(sample = y)) +
   stat_qq() +
   stat_qq_line() +
   facet_grid(time ~ treatment)
@@ -130,14 +132,14 @@ ggplot(df_A, aes(sample = Y)) +
 # Shapiro-Wilk test by groups
 df_A %>%
   group_by(time, treatment) %>%
-  shapiro_test(Y)
+  shapiro_test(y)
 
 # ANOVA and Sphericity check
-(modelo_ez_A <- ezANOVA(data = df_A, dv = Y, wid = rep, within = time, between = treatment))
+(modelo_ez_A <- ezANOVA(data = df_A, dv = y, wid = rep, within = time, between = treatment))
 
 
 # AOV model Repeated meassures
-modelo_aov_A <- aov(Y ~ time * treatment + Error(rep/time), data = df_A)
+modelo_aov_A <- aov(y ~ time * treatment + Error(rep/time), data = df_A)
 summary(modelo_aov_A)
 
 # Export data
@@ -155,43 +157,33 @@ df_A_14 <- df_A %>%
 (shapiro_results_A <- df_A_14 %>%
     group_by(treatment) %>%
     summarise(
-      W = shapiro.test(Y)$statistic,
-      p_value = shapiro.test(Y)$p.value
+      W = shapiro.test(y)$statistic,
+      p_value = shapiro.test(y)$p.value
     ))
 
 # Perform Levene test for homocedasticity
-leveneTest(Y ~ treatment, data = df_A_14)
+leveneTest(y ~ treatment, data = df_A_14)
 
 # Plotting with stats
-ggbetweenstats(
+(fig1.2 <- ggbetweenstats(
   data = df_A_14,
   x = "treatment",
-  y = "Y",
+  y = "y",
   grouping.var = treatment,
   plot.type = "box",
   xlab = "Treatments",
-  ylab = "UFC/g",
+  ylab = expression(Log[10] ~ "CFU/g"),
   pairwise.comparisons = TRUE,
   pairwise.display = "s",
   title = "APC treatment differences at the end of test",
   type = "parametric", # Normal distribution proved
   var.equal = TRUE # Homocedasticity proved
-)
+)) 
 
 # Extracting Stats data
 extract_subtitle(p)
 extract_caption(p)
 extract_stats(p)
-
-# Join plots
-fig <- subplot(
-  r_a,
-  ggplotly(a_a),  # Transform ggplot2 to plotly
-  nrows = 1,      # all plots in 1 row
-  shareX = FALSE, # Independent X axis for each plot
-  shareY = FALSE  # Independent Y axis for each plot
-)
-fig
 
 
 
@@ -202,10 +194,10 @@ fig
 df_T_summary <- df_T %>%
   group_by(time, treatment) %>%
   summarise(
-    mean_Y = mean(Y),
-    sd_Y = sd(Y),
+    mean_y = mean(y),
+    sd_y = sd(y),
     n = n(),
-    se_Y = sd_Y / sqrt(n),
+    se_y = sd_y / sqrt(n),
     .groups = 'drop'
   )
 
@@ -213,17 +205,17 @@ df_T_summary <- df_T %>%
 #  ANOVA repeated meassures  #
 # -------------------------- #
 # Plotly Line graph time series
-plot_ly(df_T_summary, x = ~time, y = ~mean_Y, color = ~treatment, 
+(fig2.1 <- plot_ly(df_T_summary, x = ~time, y = ~mean_y, color = ~treatment, 
         type = 'scatter', mode = 'lines+markers', 
-        error_y = list(type = 'data', array = ~se_Y),
+        error_y = list(type = 'data', array = ~se_y),
         marker = list(size = 5)) %>%
   layout(title = "Time series Total Coliforms",
          xaxis = list(title = "Time (days)"),
-         yaxis = list(title = "UFC/g"),
-         showlegend = TRUE)
+         yaxis = list(title = ~paste("Log<sub>10</sub> CFU/g"), range = c(1, 4.2)),
+         showlegend = TRUE))
 
 # Q-Q plot by grups
-ggplot(df_T, aes(sample = Y)) +
+ggplot(df_T, aes(sample = y)) +
   stat_qq() +
   stat_qq_line() +
   facet_grid(time ~ treatment)
@@ -231,10 +223,17 @@ ggplot(df_T, aes(sample = Y)) +
 # Shapiro-Wilk test by groups
 df_T %>%
   group_by(time, treatment) %>%
-  shapiro_test(Y)
+  shapiro_test(y)
+
+df_T_filtered <- df_T %>%
+  group_by(time, treatment) %>%
+  filter(n_distinct(y) > 1)  # Keep only groups with more than one unique y value
+
+df_T_filtered %>%
+  shapiro_test(y) 
 
 # Sphericity check
-(modelo_ez_T <- ezANOVA(data = df_T, dv = Y, wid = rep, within = time, between = treatment))
+(modelo_ez_T <- ezANOVA(data = df_T, dv = y, wid = rep, within = time, between = treatment))
 
 """# AOV model Repeated meassures alternative
 modelo_aov_T <- aov(Y ~ time * treatment + Error(rep/time), data = df_T)
@@ -252,28 +251,28 @@ df_T_14 <- df_T %>%
 (shapiro_results_T <- df_T_14 %>%
     group_by(treatment) %>%
     summarise(
-      W = shapiro.test(Y)$statistic,
-      p_value = shapiro.test(Y)$p.value
+      W = shapiro.test(y)$statistic,
+      p_value = shapiro.test(y)$p.value
     ))
 
 # Perform Levene test for homocedasticity
-leveneTest(Y ~ treatment, data = df_T_14)
+leveneTest(y ~ treatment, data = df_T_14)
 
 # Plotting with stats
-ggbetweenstats(
+(fig2.2 <- ggbetweenstats(
   data = df_T_14,
   x = "treatment",
-  y = "Y",
+  y = "y",
   grouping.var = treatment,
   plot.type = "box",
   xlab = "Treatments",
-  ylab = "UFC/g",
+  ylab = expression(Log[10] ~ "CFU/g"),
   pairwise.comparisons = TRUE,
   pairwise.display = "significant",
   title = "Total coliforms treatment differences at the end of test",
   type = "parametric", # Normal distribution proved
   var.equal = TRUE # Homocedasticity proved
-)
+)) 
 
 # Extracting Stats data
 extract_subtitle(p)
@@ -289,10 +288,10 @@ extract_stats(p)
 df_E_summary <- df_E %>%
   group_by(time, treatment) %>%
   summarise(
-    mean_Y = mean(Y),
-    sd_Y = sd(Y),
+    mean_y = mean(y),
+    sd_y = sd(y),
     n = n(),
-    se_Y = sd_Y / sqrt(n),
+    se_y = sd_y / sqrt(n),
     .groups = 'drop'
   )
 
@@ -300,17 +299,17 @@ df_E_summary <- df_E %>%
 #  ANOVA repeated meassures  #
 # -------------------------- #
 # Plotly Line graph time series
-plot_ly(df_E_summary, x = ~time, y = ~mean_Y, color = ~treatment, 
+(fig3.1 <- plot_ly(df_E_summary, x = ~time, y = ~mean_y, color = ~treatment, 
         type = 'scatter', mode = 'lines+markers', 
-        error_y = list(type = 'data', array = ~se_Y),
+        error_y = list(type = 'data', array = ~se_y),
         marker = list(size = 5)) %>%
   layout(title = "Time series <i>E. coli</i>",
          xaxis = list(title = "Time (days)"),
-         yaxis = list(title = "UFC/g"),
-         showlegend = TRUE)
+         yaxis = list(title = ~paste("Log<sub>10</sub> CFU/g"), range = c(4, 5.2)),
+         showlegend = TRUE))
 
 # Q-Q plot by grups
-ggplot(df_E, aes(sample = Y)) +
+ggplot(df_E, aes(sample = y)) +
   stat_qq() +
   stat_qq_line() +
   facet_grid(time ~ treatment)
@@ -318,10 +317,10 @@ ggplot(df_E, aes(sample = Y)) +
 # Shapiro-Wilk test by groups
 df_E %>%
   group_by(time, treatment) %>%
-  shapiro_test(Y)
+  shapiro_test(y)
 
 # Sphericity check
-(modelo_ez_E <- ezANOVA(data = df_E, dv = Y, wid = rep, within = time, between = treatment))
+(modelo_ez_E <- ezANOVA(data = df_E, dv = y, wid = rep, within = time, between = treatment))
 
 
 #   ANOVA time 14 days       #
@@ -335,28 +334,28 @@ df_E_14 <- df_E %>%
 (shapiro_results_E <- df_E_14 %>%
     group_by(treatment) %>%
     summarise(
-      W = shapiro.test(Y)$statistic,
-      p_value = shapiro.test(Y)$p.value
+      W = shapiro.test(y)$statistic,
+      p_value = shapiro.test(y)$p.value
     ))
 
 # Perform Levene test for homocedasticity
-leveneTest(Y ~ treatment, data = df_E_14)
+leveneTest(y ~ treatment, data = df_E_14)
 
 # Plotting with stats
-ggbetweenstats(
+(fig3.2 <- ggbetweenstats(
   data = df_E_14,
   x = "treatment",
-  y = "Y",
+  y = "y",
   grouping.var = treatment,
   plot.type = "box",
   xlab = "Treatments",
-  ylab = "UFC/g",
+  ylab = expression(Log[10] ~ "CFU/g"),
   pairwise.comparisons = TRUE,
   pairwise.display = "significant",
   title = expression(italic("E. coli")~"treatment differences at the end of test"),
   type = "parametric", # Normal distribution proved
   var.equal = TRUE # Homocedasticity proved
-)
+))
 
 # Extracting Stats data
 extract_subtitle(p)
@@ -372,10 +371,10 @@ extract_stats(p)
 df_S_summary <- df_S %>%
   group_by(time, treatment) %>%
   summarise(
-    mean_Y = mean(Y),
-    sd_Y = sd(Y),
+    mean_y = mean(y),
+    sd_y = sd(y),
     n = n(),
-    se_Y = sd_Y / sqrt(n),
+    se_y = sd_y / sqrt(n),
     .groups = 'drop'
   )
 
@@ -383,17 +382,17 @@ df_S_summary <- df_S %>%
 #  ANOVA repeated meassures  #
 # -------------------------- #
 # Plotly Line graph time series
-plot_ly(df_S_summary, x = ~time, y = ~mean_Y, color = ~treatment, 
+(fig4.1 <- plot_ly(df_S_summary, x = ~time, y = ~mean_y, color = ~treatment, 
         type = 'scatter', mode = 'lines+markers', 
-        error_y = list(type = 'data', array = ~se_Y),
+        error_y = list(type = 'data', array = ~se_y),
         marker = list(size = 5)) %>%
   layout(title = "Time series <i>S. aureus</i>",
          xaxis = list(title = "Time (days)"),
-         yaxis = list(title = "UFC/g"),
-         showlegend = TRUE)
+         yaxis = list(title = ~paste("Log<sub>10</sub> CFU/g"), range = c(4, 5.2)),
+         showlegend = TRUE))
 
 # Q-Q plot by grups
-ggplot(df_S, aes(sample = Y)) +
+ggplot(df_S, aes(sample = y)) +
   stat_qq() +
   stat_qq_line() +
   facet_grid(time ~ treatment)
@@ -401,10 +400,10 @@ ggplot(df_S, aes(sample = Y)) +
 # Shapiro-Wilk test by groups
 df_S %>%
   group_by(time, treatment) %>%
-  shapiro_test(Y)
+  shapiro_test(y)
 
 # Sphericity check
-(modelo_ez_S <- ezANOVA(data = df_S, dv = Y, wid = rep, within = time, between = treatment))
+(modelo_ez_S <- ezANOVA(data = df_S, dv = y, wid = rep, within = time, between = treatment))
 
 
 #   ANOVA time 14 days       #
@@ -418,22 +417,22 @@ df_S_14 <- df_S %>%
 (shapiro_results_S <- df_S_14 %>%
   group_by(treatment) %>%
   summarise(
-    W = shapiro.test(Y)$statistic,
-    p_value = shapiro.test(Y)$p.value
+    W = shapiro.test(y)$statistic,
+    p_value = shapiro.test(y)$p.value
   ))
 
 # Perform Levene test for homocedasticity
-leveneTest(Y ~ treatment, data = df_S_14)
+leveneTest(y ~ treatment, data = df_S_14)
 
 # Plotting with stats
-(p <- ggbetweenstats(
+(fig4.2 <- ggbetweenstats(
   data  = df_S_14,
   x = "treatment",
-  y = "Y",
+  y = "y",
   grouping.var = treatment,
   plot.type = "box",
   xlab = "Treatments",
-  ylab = "UFC/g",
+  ylab = expression(Log[10] ~ "CFU/g"),
   pairwise.comparisons = TRUE,
   pairwise.display = "s",
   title = expression(italic("S. aureus")~"treatment differences at the end of test"),
@@ -441,6 +440,34 @@ leveneTest(Y ~ treatment, data = df_S_14)
   var.equal = TRUE # Homocedasticity proved
 ))
 
+
+plotly::ggplotly(fig4.2, width = 751, height = 508)
+
 extract_subtitle(p)
 extract_caption(p)
 extract_stats(p)
+
+
+
+# Mixed panel plot 
+# 2 on top, 1 down
+# Patchwork package
+fig1.2 <- fig1.2 + scale_y_continuous(limits = c(2, 10))
+fig2.2 <- fig2.2 + scale_y_continuous(limits = c(2, 10))
+fig3.2 <- fig3.2 + scale_y_continuous(limits = c(2, 10))
+fig4.2 <- fig4.2 + scale_y_continuous(limits = c(2, 10)) 
+
+combined_plot <- fig1.2 + fig2.2 + fig3.2 + fig4.2 + 
+  plot_layout(guides = 'collect')
+combined_plot
+
+# Plotly package subplot function
+fig <- subplot(fig1.1, fig2.1, fig3.1, fig4.1, nrows = 2, shareX = TRUE, shareY = TRUE) # 2x2 grid
+fig <- fig %>% layout(
+  title = "Combined Plots", 
+  annotations = list(text = "I", x = 0, xref = 'paper', y = 1, yref = 'paper', showarrow = FALSE)) # Annotations
+fig
+
+
+
+fig1.1 + fig2.1 + fig3.1 + fig4.1
