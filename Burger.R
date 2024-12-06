@@ -1,5 +1,6 @@
 rm(list = ls())     # clear objects  
 graphics.off() 
+#ctrl+L   #to clean console
 #######################################
 ###### Contaminated Burgers ###########
 #######################################
@@ -41,8 +42,9 @@ df <- df %>%
     time = as.factor(time),
     treatment = as.factor(treatment),
     rep = as.factor(rep),
-    y = as.numeric(y)
-  )
+    y = as.numeric(Y)
+  ) %>%
+  select(-Y)
 summary(df)
 
 
@@ -54,6 +56,7 @@ df_A <- df %>% filter(mo == "APC")
 df_T <- df %>% filter(mo == "Total coliforms")
 df_E <- df %>% filter(mo == "E. coli")
 df_S <- df %>% filter(mo == "S. aureus")
+df_M <- df %>% filter(mo == "Salmonella spp")
 
 """ #not used for the second iteration
 # Negative control mean
@@ -448,7 +451,140 @@ extract_caption(p)
 extract_stats(p)
 
 
+###################
+#### Salmonella ###
+###################
+# dispersion measures
+df_M_summary <- df_M %>%
+  group_by(time, treatment) %>%
+  summarise(
+    mean_y = mean(y),
+    sd_y = sd(y),
+    n = n(),
+    se_y = sd_y / sqrt(n),
+    .groups = 'drop'
+  )
 
+
+
+#  ANOVA repeated meassures  #
+# -------------------------- #
+# First Plot
+ggplot(df_M, aes(x = time, y = y, color = treatment)) +
+  geom_boxplot() +
+  labs(title = "Distribución de Y por tiempo y tratamiento", x = "Tiempo", y = "UFC/g")
+
+
+# Plotly Line graph time series
+(fig1.1 <- plot_ly(df_M_summary, x = ~time, y = ~mean_y, color = ~treatment, 
+                   type = 'scatter', mode = 'lines+markers', 
+                   error_y = list(type = 'data', array = ~se_y),
+                   marker = list(size = 5)) %>%
+    layout(title = "Time series <i>Salmonella</i> spp",
+           xaxis = list(title = "Time (days)"),
+           yaxis = list(title = ~paste("Log<sub>10</sub> CFU/g"), range = c(1, 6.5)),
+           showlegend = TRUE))
+
+
+
+htmlwidgets::saveWidget(r_a, "r_a.html")
+
+
+# Forced interpolation between 7 and 14
+df_M_summary <- df_M_summary %>%
+  group_by(treatment) %>% # Asegura que las funciones trabajen por grupo
+  arrange(time, .by_group = TRUE) %>% # Ordena por tiempo dentro de cada tratamiento
+  mutate(mean_y = if_else(time == 10,
+                          (lag(mean_y) + lead(mean_y)) / 2, 
+                          mean_y),
+         sd_y = if_else(time == 10,
+                        (lag(sd_y) + lead(sd_y)) / 2, 
+                        sd_y)) %>%
+  ungroup()
+
+
+# Plotly Line graph time series corrected by interpolation
+(fig1.1 <- plot_ly(df_M_summary, x = ~time, y = ~mean_y, color = ~treatment, 
+                   type = 'scatter', mode = 'lines+markers', 
+                   error_y = list(type = 'data', array = ~se_y),
+                   marker = list(size = 5)) %>%
+    layout(title = "Time series <i>Salmonella</i> spp",
+           xaxis = list(title = "Time (days)"),
+           yaxis = list(title = ~paste("Log<sub>10</sub> CFU/g"), range = c(1, 6.5)),
+           showlegend = TRUE))
+
+
+# Q-Q plot by grups
+ggplot(df_M, aes(sample = y)) +
+  stat_qq() +
+  stat_qq_line() +
+  facet_grid(time ~ treatment)
+
+# Shapiro-Wilk test by groups
+df_M %>%
+  group_by(time, treatment) %>%
+  shapiro_test(y)
+
+# ANOVA and Sphericity check
+(modelo_ez_M <- ezANOVA(data = df_M, dv = y, wid = rep, within = time, between = treatment))
+
+
+# AOV model Repeated meassures
+modelo_aov_M <- aov(y ~ time * treatment + Error(rep/time), data = df_M)
+summary(modelo_aov_M)
+
+# Export data
+
+
+
+#   ANOVA time 14 days       #
+# -------------------------- #
+# Filter
+df_M_14 <- df_M %>%
+  filter(time == "14") %>% 
+  mutate(treatment = factor(treatment, levels = c("C", "PBF", "BU1", "BU2")))
+
+# Perform Shapiro-Wilk test for each treatment group
+(shapiro_results_M <- df_M_14 %>%
+    group_by(treatment) %>%
+    summarise(
+      W = shapiro.test(y)$statistic,
+      p_value = shapiro.test(y)$p.value
+    ))
+
+# Perform Levene test for homocedasticity
+leveneTest(y ~ treatment, data = df_M_14)
+
+# Plotting with stats
+(fig1.2 <- ggbetweenstats(
+  data = df_M_14,
+  x = "treatment",
+  y = "y",
+  grouping.var = treatment,
+  plot.type = "box",
+  xlab = "Treatments",
+  ylab = expression(Log[10] ~ "CFU/g"),
+  pairwise.comparisons = TRUE,
+  pairwise.display = "s",
+  title = "APC treatment differences at the end of test",
+  type = "parametric", # Normal distribution proved
+  var.equal = TRUE # Homocedasticity proved
+)) 
+
+# Extracting Stats data
+extract_subtitle(p)
+extract_caption(p)
+extract_stats(p)
+
+
+
+
+
+
+
+# -------------------------- #
+#    Figures  #
+# -------------------------- #
 # Mixed panel plot 
 # 2 on top, 1 down
 # Patchwork package
