@@ -566,7 +566,7 @@ leveneTest(y ~ treatment, data = df_M_14)
   ylab = expression(Log[10] ~ "CFU/g"),
   pairwise.comparisons = TRUE,
   pairwise.display = "s",
-  title = "APC treatment differences at the end of test",
+  title = expression(italic("Salmonella")~"spp treatment differences at the end of test"),
   type = "parametric", # Normal distribution proved
   var.equal = TRUE # Homocedasticity proved
 )) 
